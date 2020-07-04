@@ -1,0 +1,587 @@
+---
+title: "Final Report"
+author: "Himanshi Sharma, Srivatsa Gangadhara, Eladio Arias"
+date: "November 15, 2017"
+output:
+  pdf_document: default
+  html_document: default
+subtitle: IS 6489 - Statistics & Predictive Analytics
+---
+
+
+```{r setup, include=FALSE}
+# This chunk controls the global options, defining the behavior 
+# of each code chunk below.  
+knitr::opts_chunk$set(echo = F, eval = T,  include=TRUE, warning = F, message = F)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(caret)
+library(GGally)
+
+```
+
+## Introduction
+
+One of the markets in which almost every person is involved during their life is the Housing and Real Estate Market. Each transaction in this market involves a number of dependent factors which leads to asymmetric information among the parties in participation. By definition, asymmetric information is incomplete knowledge of the product features and price (for the product of interest, and all its substitutes) for a transaction. The market has regulated itself incorporating housing inspections before the purchase. Nevertheless, there is still one point that is necessary to address to reduce the asymmetry of information that is determining the right sale price. Thus price is the point of focus of this study. The present study concentrates on providing a predictive model for housing price identifying the variables that mostly influence it. This analysis will result in further knowledge for all the other influence factors in the market improving the decision-making process, making transaction valuable for both parties, sustaining the market over time, and guiding purchasers to select correct prices considering most influential variables.
+
+This business problem is part of a competition issued by Kaggle ^1^. The analytical approach is to work with the data set containing the data associated with the problem under analysis. The data set is divided in two partition - train and test; to efficiently derive a predictive function by training it on train data and testing it on the test data. The two partitions are provided by Kaggle and have enough information to meet the needs of the business problem.
+
+The dataset contains 2919 observation across 81 variables of which 80 are explanatory variables describing almost every aspect of residential homes, including the price of a house. The two partition train and test have 1460 and 1459 observations respectively. This competition challenges the participants to predict the final price of each home, which is our ultimate goal.
+
+For the purpose of predicting prices our outcome or variable of interest is Sale price of a house, represented as *'SalePrice'* in the data set. All the other variables are the independent variables which aid in determining the sale prices of the houses.
+
+
+
+```{r}
+## Setting Up
+#Loading the train and test data
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+```
+
+## Section 1: Data Modeling and Cleaning
+
+In order to create a prediction model for the real estate sale price we performed certain data modeling and cleaning procedures.
+ 
+- We read the data dictionary, understood each variable and their extend of influence on the Sale Price.
+   
+
+- Understood the type of each variable and classified them into different categories like Nominal, Ordinal, Discrete and Continuous.  
+  
+  
+______________________________________________________________________________  
+^1^ _Kaggle is a community of data scientists and data enthusiasts._
+_It is a platform that enables people to learn from and mentor each other on_
+_their personal, academic, and professional data science journeys._
+_For further information, please visit the link to the competition_ 
+(https://www.kaggle.com/c/house-prices-advanced-regression-techniques)
+
+______________________________________________________________________________ 
+
+
+Continuous Variables  | Discrete Variables | Nominal Variables | Ordinal Variables
+------------- | ------------- | -------------  | -------------
+LotFrontage    | YearBuilt | MSSubClass | LotShape        
+LotArea        | YearRemodAdd | MSZoning | Utilities  
+MasVnrArea     | BsmtFullBath | Street  | LandSlope  
+BsmtFinSF1    | BsmtHalfBath | Alley  | OverallQual  
+BsmtFinSF2        | FullBath | RoofStyle  | OverallCond  
+BsmtUnfSF        | HalfBath | LandContour  | ExterQual  
+TotalBsmtSF | Bedroom | RoofMatl  | ExterCond  
+1stFlrSF        | Kitchen | LotConfig  | BsmtQual  
+2ndFlrSF        | TotRmsAbvGrd | Exterior1st  | BsmtCond  
+LowQualFinSF        | Fireplaces | Neighborhood  | BsmtExposure  
+GrLivArea        | GarageYrBlt | Condition1  | BsmtFinType1  
+GarageArea        | GarageCars | Condition2  | BsmtFinType2  
+WoodDeckSF        | MoSold | BldgType  | HeatingQC  
+OpenPorchSF        | YrSold | HouseStyle  | Electrical  
+EnclosedPorch        | Order | Exterior2nd  | KitchenQual  
+3SsnPorch        | __ | MasVnrType  | Functional  
+ScreenPorch        | __ | MiscFeature  | FireplaceQu  
+PoolArea        | __ | SaleType  | GarageFinish  
+MiscVal        | __ | Foundation  | GarageQual  
+SalePrice         | __ | SaleCondition  | GarageCond  
+___        | __ | PID  | PavedDrive  
+___        | __ | Heating | PoolQC  
+___        | __ | CentralAir | Fence  
+___        | __ | GarageType | ___  
+___        | __ | PoolQC | ___  
+
+
+- Combined the data i.e. merged train and test into one dataset to perform preprocessing.
+
+
+```{r}
+#combining train and test for data preprocessing
+data <- rbind(train[,1:80], test[,1:80])
+#Id's of train and test data are fetched in order to split the merged data
+#into train and test.
+Ids <- train$Id
+test.Id <- test$Id
+#Duplicated the train data to include SalePrice to the prepocessed train data
+#as it was droped once we merged train and test.
+t <- read.csv("train.csv")
+```
+- Looked at the summary statistics - mean, median and mode; of each variables in the data set. We found that 34 variables have missing values of which  PoolQC, MiscFeature and Alley have more than 90% of the data missing. Due to this observation we decided to impute the dataset. [Refer Figure 1]
+
+```{r fig1, fig.height = 3, fig.align = "center"}
+#summary(train)
+
+# computed the percentage of missing value per variable.
+missing_data <- as.data.frame(colSums(sapply(data, is.na))/nrow(data)*100)
+names(missing_data) <- c("Missing Ratio")
+missing_data$Variable <- names(data)
+missing_data <- missing_data[order(missing_data$`Missing Ratio`, decreasing = TRUE),]
+missing <- subset(missing_data, `Missing Ratio` > 0)
+rownames(missing) <- NULL
+ggplot(missing, aes(reorder(Variable, `Missing Ratio`), `Missing Ratio`, group = Variable)) + 
+  geom_bar(stat= "identity", fill = "#D35400") +
+  xlab(" ") +
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))+
+  ggtitle("Figure 1: Missing Ratio per variable")
+
+```
+
+- Some of the imputation were straightforward, for example PoolQC had the highest number of missing values, which could be easily imputed to "No pool" as most of the house actually don't have pool. For some variables like BsmtQual, GarageCond etc the data dictionary explicitly said NA meant No basement, No garage etc, therefore they were replaced by "None".^2^
+
+- Other values were imputed using mean/median/mode imputation, i.e. the missing values were replaced with mean/median for the numerical values and with mode for the categorical values.
+```{r}
+##Transforming nominal variables
+##PoolQc
+##data$PoolQC <- factor(data$PoolQC, levels = c("EX", "Gd", "TA", "Fa", "None"), ordered = TRUE)
+levels(data$PoolQC) <- c(levels(data$PoolQC), "None")
+data[is.na(data$PoolQC), "PoolQC"] <- "None"
+data$PoolQC <- factor(data$PoolQC, levels = rev(levels(data$PoolQC)), ordered = TRUE) 
+# table(data$PoolQC)
+# str(data$PoolQC)
+##Mise Features
+##As the dataset description suggest NA could be no misc feature here NA could be imputed to NONE
+## It also makes sense as all the other features than elevator, shed etc are inculded in other.
+# table(data$MiscFeature)
+levels(data$MiscFeature) <- c(levels(data$MiscFeature),"None")
+data$MiscFeature[is.na(data$MiscFeature)] <- "None"
+
+
+## Fence
+## Most of the houses are not fenced and here we can see 48% of the values are NA
+## as per data description NA is no fence
+
+levels(data$Fence) <- c(levels(data$Fence), "None")
+data[is.na(data$Fence), "Fence"] <- "None"
+data$Fence <- factor(data$Fence, levels = rev(levels(data$Fence)), ordered = TRUE) 
+# table(data$Fence)
+# str(data$Fence)
+
+##FireplaceQu
+# table(data$Fireplaces[is.na(data$FireplaceQu)])
+##All thoes who don't have fireplace have NA as there FireplaceQu as NA
+## Data Description also says FireplaceQu are NA when No fireplace
+levels(data$FireplaceQu) <- c(levels(data$FireplaceQu), "None")
+data[is.na(data$FireplaceQu), "FireplaceQu"] <- "None"
+data$FireplaceQu <- factor(data$FireplaceQu, levels = rev(levels(data$FireplaceQu)), ordered = TRUE) 
+# table(data$FireplaceQu)
+# str(data$FireplaceQu)
+
+##Alley
+# table(data$Alley)
+levels(data$Alley) <- c(levels(data$Alley),"None")
+data$Alley[is.na(data$Alley)] <- "None"
+# table(data$Alley)
+
+###summary(train$MasVnrType)
+t <- data %>%
+  select(MasVnrArea, MasVnrType) %>%
+  filter(is.na(MasVnrArea))
+
+levels(data$MasVnrType) <- c(levels(data$MasVnrType),"None")
+data$MasVnrType[is.na(data$MasVnrArea)] <- "None"
+data$MasVnrArea[is.na(data$MasVnrArea)] <- 0
+
+tab<- table(data$MasVnrType[data$MasVnrArea==198])
+data$MasVnrType[is.na(data$MasVnrType)] <- "Stone"
+## Electric & Kitchen
+# table(data$Electrical)
+data$Electrical[is.na(data$Electrical)] <-"SBrkr"
+# table(data$KitchenQual)
+# table(data$KitchenQual[data$KitchenAbvG == 1])
+data$KitchenQual[is.na(data$KitchenQual)] <- "TA"
+
+
+
+
+
+
+##Looking at GarageCond and GarageType
+t <- data %>%
+  select(GarageArea, GarageCars, GarageType, GarageCond, GarageFinish, GarageYrBlt, GarageQual)
+
+levels(data$GarageQual) <- c(levels(data$GarageQual), "None")
+data$GarageQual <- factor(data$GarageQual, levels = rev(levels(data$GarageQual)), ordered = TRUE) 
+
+levels(data$GarageCond) <- c(levels(data$GarageCond), "None")
+data$GarageCond <- factor(data$GarageCond, levels = rev(levels(data$GarageCond)), ordered = TRUE) 
+
+levels(data$GarageFinish) <- c(levels(data$GarageFinish),"None")
+
+levels(data$GarageType) <- c(levels(data$GarageType),"None")
+
+l = which(is.na(data$GarageType))
+# print(l)
+for(i in which(is.na(data$GarageType))){
+  # print(i)
+  # table(data$GarageQual)
+  data$GarageQual[i] <- "None"
+  # table(data$GarageQual)
+  # str(data$GarageQual)
+  
+  ##condition
+  # table(data$GarageCond)
+  data$GarageCond[i]<- "None"
+  # table(data$GarageCond)
+  # str(data$GarageCond)
+  
+  ## garage finish
+  
+  # table(data$GarageFinish)
+  data$GarageFinish[i] <- "None"
+  # table(data$GarageFinish)
+  
+  ## garage year built
+  # table(data$GarageYrBlt)
+  data$GarageYrBlt[i] <- 0
+  
+  ## garage type
+  data$GarageType[i] <- "None"
+  # table(data$GarageType)
+}
+
+t <- data %>%
+  select(GarageArea, GarageCars, GarageType, GarageCond, GarageFinish, GarageYrBlt, GarageQual)%>%
+  filter(GarageType == "Detchd")
+
+# table(data$GarageCond[data$GarageArea==360 & data$GarageCars ==1& data$GarageType == "Detchd"])
+data$GarageCond[data$GarageArea==360 & data$GarageCars ==1& 
+                  data$GarageType == "Detchd"& is.na(data$GarageCond)] <- "TA"
+
+# table(data$GarageFinish[data$GarageArea==360 & data$GarageCars ==1& 
+#                           data$GarageType == "Detchd" & data$GarageCond =="TA"])
+data$GarageFinish[data$GarageArea==360 & data$GarageCars ==1& 
+                  data$GarageType == "Detchd"& data$GarageCond =="TA" & is.na(data$GarageFinish)] <- "Unf"
+
+# table(data$GarageQual[data$GarageArea==360 & data$GarageCars ==1& 
+#                           data$GarageType == "Detchd" & data$GarageCond =="TA" 
+#                       & data$GarageFinish == "Unf"])
+data$GarageQual[data$GarageArea==360 & data$GarageCars ==1& 
+                  data$GarageType == "Detchd" & data$GarageCond =="TA" 
+                & data$GarageFinis == "Unf" & is.na(data$GarageQual)] <- "TA"
+
+# table(data$GarageYrBlt[data$GarageArea==360 & data$GarageCars ==1& 
+#                          data$GarageType == "Detchd" & data$GarageCond =="TA" 
+#                        & data$GarageFinish == "Unf" & data$GarageQual == "TA"])
+
+
+t <- data %>%
+  select(BsmtCond, BsmtQual, BsmtExposure, BsmtFinType1, BsmtFinSF1, 
+         BsmtFinType2, BsmtFinType1,BsmtFinSF1, BsmtFinSF2, BsmtHalfBath,
+         BsmtFullBath, BsmtUnfSF, TotalBsmtSF)
+
+# which(data$TotalBsmtSF == 0 | is.na(data$TotalBsmtSF))
+
+levels(data$BsmtCond) <- c(levels(data$BsmtCond), "None")
+data$BsmtCond <- factor(data$BsmtCond, levels = rev(levels(data$BsmtCond)), ordered = TRUE) 
+
+levels(data$BsmtQual) <- c(levels(data$BsmtQual), "None")
+data$BsmtQual <- factor(data$BsmtQual, levels = rev(levels(data$BsmtQual)), ordered = TRUE) 
+
+levels(data$BsmtExposure) <- c(levels(data$BsmtExposure), "None")
+data$BsmtExposure <- factor(data$BsmtExposure, levels = rev(levels(data$BsmtExposure)), ordered = TRUE) 
+
+levels(data$BsmtFinType1) <- c(levels(data$BsmtFinType1), "None")
+data$BsmtFinType1<- factor(data$BsmtFinType1, levels = rev(levels(data$BsmtFinType1)), ordered = TRUE) 
+
+levels(data$BsmtFinType2) <- c(levels(data$BsmtFinType2), "None")
+data$BsmtFinType2 <- factor(data$BsmtFinType2, levels = rev(levels(data$BsmtFinType2)), ordered = TRUE) 
+
+
+
+
+# data %>%
+#   select(BsmtQual, BsmtCond, BsmtExposure,BsmtFinType1, BsmtFinType2) %>%
+#   summary
+
+for(i in which(data$TotalBsmtSF == 0 | is.na(data$TotalBsmtSF))){
+  
+  data$BsmtCond[i] <- "None"
+  
+  data$BsmtQual[i] <- "None"
+  
+  data$BsmtExposure[i] <- "None"
+  
+  data$BsmtFinType1[i] <- "None"
+  data$BsmtFinType2[i] <- "None"
+  data$BsmtFullBath[i] <- 0
+  data$BsmtFinSF1[i] <- 0
+  data$BsmtFinSF2[i] <- 0
+  data$BsmtHalfBath[i] <- 0
+  data$BsmtUnfSF[i] <- 0
+}
+
+data$TotalBsmtSF[is.na(data$TotalBsmtSF)] <- 0
+# table(data$BsmtExposure[data$BsmtCond =="TA"&data$BsmtFinType1 =="Unf" & data$BsmtQual == "Gd"
+#                         & data$BsmtFinType2 =="Unf"])
+
+data$BsmtExposure[data$BsmtCond =="TA"&
+                    data$BsmtFinType1 =="Unf" & data$BsmtQual == "Gd"
+                  & data$BsmtFinType2 =="Unf" & 
+                    is.na(data$BsmtExposure)] <- "No"
+
+#table(data$BsmtFinType2[data$BsmtFinType1 == "GLQ"])
+data$BsmtFinType2[is.na(data$BsmtFinType2)] <- "Unf"
+#table(data$BsmtCond[data$BsmtQual == "Gd"])
+#table(data$BsmtQual[data$BsmtCond == "TA"])
+data$BsmtQual[is.na(data$BsmtQual)] <- "TA"
+data$BsmtCond[is.na(data$BsmtCond)] <- "TA"
+
+##Utilities
+data$Utilities[is.na(data$Utilities)]<-"AllPub"
+
+
+
+##MSZoning
+data$MSZoning[is.na(data$MSZoning)] <- "RL"
+
+#picking out the continious variable
+##First one is Lot Frontage
+
+for (i in levels(data$Neighborhood)){
+  Median = median(na.omit(data$LotFrontage[data$Neighborhood == i]))
+  data$LotFrontage[is.na(data$LotFrontage)] <- Median
+}
+
+## Exterior1st
+# table(data$Exterior1st)
+# str(data$Exterior1st)
+data$Exterior1st[is.na(data$Exterior1st)] <- "VinylSd"
+
+##Exterior2nd
+# table(data$Exterior2nd)
+# str(data$Exterior2nd)
+data$Exterior2nd[is.na(data$Exterior2nd)] <- "VinylSd"
+
+
+#######Main Work
+
+# summary(data)
+d <- data
+# sort(colSums(sapply(d, is.na)))
+
+### Replacing remaining nulls with mode or mean
+## Garage finish
+d$GarageFinish[is.na(d$GarageFinish)]<- "Unf"
+## Garage Cars
+d$GarageCars[is.na(d$GarageCars)] <- 1.76
+
+## Garage Area
+d$GarageArea <- as.numeric(d$GarageArea)
+d$GarageArea[is.na(d$GarageArea)] <- 472.9
+
+##Garage Cond
+d$GarageCond[is.na(d$GarageCond)]<- "TA"
+
+## SaleType
+d$SaleType[is.na(d$SaleType)]<- "WD"
+
+## Functional
+d$Functional[is.na(d$Functional)]<- "Typ"
+
+## GarageYrBlt
+d$GarageYrBlt[is.na(d$GarageYrBlt)] <- 1872
+
+## GarageQual
+d$GarageQual[is.na(d$GarageQual)] <- "TA"
+
+```
+- Reviewed the summary statistics of each variable and looked for any outlier in the dataset. We found that GrLivArea seems to have some outlier (shown in figure). This observation was based on the idea that most of houses with greater Ground living area have higher prices, which was again validated when we looked at the distribution graph of SalePrice across GrLivArea, greater area higher price.
+We removed the outlier to get more acurate results.
+
+
+
+```{r fig2, fig.height = 2, fig.width=4, fig.align = "center"}
+ggplot(train, aes(GrLivArea, SalePrice)) +
+  geom_point()+
+  ggtitle("Figure 2: GrLivArea vs SalePrice")
+
+train <- subset(train, !(GrLivArea > 4000 & SalePrice <300000))
+
+```
+
+- Lastly, we also performed the exploratory data analysis on the dependant variable *SalePrice* and on plotting [Refer Figure 3], it was observed that shape was skewed towards the right, in order to balance that out we log transformed *SalePrice* [Refer Figure 4].  
+
+  
+  
+  
+```{r fig3, fig.height = 2, fig.width=4,  fig.align = "center"}
+ggplot(train, aes(SalePrice))+
+  geom_density(fill="#F5B041", color = "#F5B041") +
+  theme_minimal()+
+  ggtitle("Figure 3: Distribution of SalePrice")+
+  scale_x_continuous(labels=scales::comma)+
+  scale_y_continuous(labels=scales::comma)
+```
+  
+______________________________________________________________________________
+^2^ _For the inter-related variables like TotalBsmtSF and BsmtFinSF1 or_
+_TotalBsmtSF and BsmtCond were imputed based value of the non-missing_
+_variables.For example, if TotalBsmtSF = 0, meaning no Basment is present then_
+_the BsmtCond will be imputed to NA or "None", indicating there is no basement_ _in the house._  
+  
+______________________________________________________________________________    
+ 
+  
+```{r fig4, fig.height = 2, fig.width=4, fig.align = "center"}
+ggplot(train, aes(log(SalePrice)))+
+  geom_density(color = "#C0392B")+
+  theme_minimal()+
+  ggtitle("Figure 4: Distribution of logged SalePrice")
+```
+
+
+
+## Section 2: Variable Selection and Model development
+
+The variable and model selection are the foundational processes of the entire set of activities performed in the present report. The ability to predict relies on the variables and model selection. Each variable has a different power over prediction. The same occurs with models. 
+
+The process of selection of the variables and predictive algorithm will be essential for the final Sale Price prediction, which is the ultimate goal of this report.
+
+The analysis goal is focused on how to predict Sale price in an accurate, precise, and trustworthy manner. The prediction will provide a solution for our business problem associated with high monetary transactions. This section counts with two subsections, first the variable selection, and second the model selection.
+
+### a. Variable Selection
+
+- We first decided to weight each variable according to our knowledge of the market, and its potential power over prediction. We developed an introductory approach to the variable selection understanding the variables. This process took time due to the need we had as data scientists to understand the variables associated with the market and the business context in which the real estate transactions take place.
+
+- We complemented the previous step with a correlation matrix looking for a numerical value of association between variables as well as with the response variable. 
+The goal of this step was to remove collinear variables and select variables that has maximum correlation with *SalePrice* as well as high impact in predicting *SalePrice* based on our market understanding. The two variables selected were GrLivArea and TotalBsmtSF.  
+
+```{r fig5, fig.subcap="Figure 5: Correlation matrix"}
+ggcorr(train[, -1], 
+       		nbreaks = 5, min_size = 0, max_size = 6, hjust = 1, layout.exp = 5)
+```
+
+- Next we decided to look at variance of the variables and removed the variables with zero or near zero variance ^3^ since they didn't add any valuable information for predicting Sale Price. 
+For example, variable Utilities had *"AllPub"* (all public utilities) for all the rows except for one which had the value *"NoSeWa"* (electricity and gas only). Intuitively it made sense to remove this variable because it was not adding any information to influence the prediction of sales price of house as most of the houses do have all the utilities or in other words the variable had zero or near zero variance.
+
+```{r}
+x = nearZeroVar(d, names=TRUE)
+
+dd <- d[, !(names(d) %in% x)]
+```
+
+- At this point we had 58 variables and we decided to use them to build our model.  
+
+```{r}
+#Splitting the data set in train and test for building model
+train <- dd[Ids,]
+test <- dd[test.Id, ]
+names(train) <-names(dd)
+names(test) <- names(train)
+
+train$SalePrice <- t$SalePrice
+```
+  
+  
+### b. Model Selection
+ 
+ 
+Model selection to predict the sale price of house was based on the fact that the response variable was a continuous variable and the data set had more than 50 variables with possible multi-collinearity.  
+  
+Therefore, we decided to start with Regularization regression that accounts for multicollinearity and is effective when the dataset have large number of predictors.
+
+We also wanted to look at other black-box algorithms that are known to give quality predictions, therefore we decided to also build Support vector Machine(SVM) model with Linear kernel (svmLinear).  
+  
+______________________________________________________________________________  
+^3^ _The variables were removed using nearZeroVar() function of caret package,_ _which essentially identifies the variables that have - very few unique values_
+_relative to the number of samples and the ratio of the frequency of the most_ _common value to the frequency of the second most common value is large._
+   
+______________________________________________________________________________  
+ 
+  
+   
+  
+  
+## Section 3 :Model Performance
+
+After treating the data and selecting the independent variables, we evaluated the in-sample and out-of-sample performance for our predictive model. The analysis measurement were R-Squared and RMSE, used as representation of our model ability to predict. RMSE value indicates a measure of error in the prediction and R-Squared value accounts for the explanation in variation of the predictive value.
+
+Following are the optimal models, constructed to predict sale price of the different houses presented in the test data:
+
+1. Regularization regression with *glmnet*: The optimal model was selected based on RMSE, following data represents the optimal model.
+
+```{r eval=FALSE}
+model_glmnet <- train(log(SalePrice) ~., data = train,
+                           preProcess=c("center","scale"),
+                        method =  "glmnet")
+#coef(model_glmnet$finalModel)
+
+prediction_glmnet <- as.data.frame(exp(predict(model_glmnet, test)))
+write.csv(prediction_glmnet, "prediction_glmnet.csv")
+
+```
+
+    + Alpha = 0.55
+    + Lamda = 0.006564309
+    + R-squared = 0.9082914 
+    + Kaggle score of prediction = 0.12280
+    + Kaggle rank = 698
+
+2. Support Vector machines with *Linear Kernel (svmLinear)* : We tried this model with different costs. The final models were selected based on lowest RMSE.
+
+```{r eval = FALSE}
+
+##model - svm
+
+grid <- expand.grid(C = c(1,2,3))
+
+###### SVM
+svmFit1_ <- train(log(SalePrice) ~ ., data = train, 
+                 method='svmLinear',  
+                 preProc = c("center","scale"),
+                 verbose = FALSE,
+                 probability = TRUE,
+                 tuneGrid = grid
+                 
+)
+
+svmFit1_
+prediction_svm_ <- as.data.frame(exp(predict(svmFit1_, newdata= test)))
+write.csv(prediction_svm_outlier1, "prediction_svmLinear_.csv")
+
+```
+
+  * Cost = 1
+      + R-squared = 0.8923483
+      + Kaggle score of prediction = 0.12280
+      + Kaggle Rank = 698
+  
+```{r eval = FALSE}
+
+
+## SVM Linear2
+grid2 <- expand.grid(C = c(0.25,0.5,0.75))
+
+svmFit2_ <- train(log(SalePrice) ~ ., data = train, 
+                 method='svmLinear',  
+                 preProc = c("center","scale"),
+                 verbose = FALSE,
+                 probability = TRUE,
+                 tuneGrid = grid2
+                 
+)
+
+svmFit2_
+
+prediction_svm2_ <- as.data.frame(exp(predict(svmFit2_, test)))
+write.csv(prediction_svm2_,"prediction_svmLinear_.csv")
+```
+
+  * Cost = 0.25
+      + R-squared = 0.8946725
+      + Kaggle score of prediction = 0.12707
+      + Kaggle Rank = >698  
+
+Further, in an attempt to lower the score and elevate our ranking in this kaggle competition we resolved to compute the avearage of predicted sale prices that glmnet and SVM(Linear Kernel with C=1)models predicted. The results for this attempt is shown below:
+
+```{r eval=FALSE}
+avg_prediction <- ((prediction_glmnet+prediction_svm_)/2)
+write.csv(avg_prediction, "average_prediction.csv")
+```
+
+4. Average of all predicted sale price
+    + Kaggle score of prediction : 0.12216
+    + Kaggle Rank: 665
+
+
+## Conclusion
+
+This study resulted in an efficient predictive model for housing sale price. This can be observed in the values obtained in the performance section where the model is tested against different data sets. The variables selected were the highest influential variables under analysis, and that can be observed on the values of RMSE and R-Squared. The model helps to reduce the asymmetric information in the housing sales price.
